@@ -1,0 +1,2231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Pit Wall Commander: simulador táctico de estrategia de carrera de Fórmula 1.">
+  <title>Pit Wall Commander — Simulador de Estrategia F1</title>
+  <style>
+    /* ============================================================
+       TEMA BASE
+       ============================================================ */
+    :root {
+      --bg: #0b0e14;
+      --bg-2: #0f141d;
+      --panel: #121824;
+      --panel-2: #0e131c;
+      --border: #233047;
+      --border-soft: #1a2333;
+      --text: #e7eefb;
+      --muted: #8b99b0;
+      --green: #00ff88;
+      --red: #ff3366;
+      --yellow: #ffcc00;
+      --blue: #00d2ff;
+      --radius: 16px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --shadow: 0 24px 60px -40px rgba(0, 0, 0, .95);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { color-scheme: dark; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1100px 620px at 85% -10%, rgba(0, 255, 136, .085), transparent 62%),
+        radial-gradient(900px 560px at -8% 100%, rgba(0, 210, 255, .07), transparent 60%),
+        linear-gradient(180deg, #0b0e14 0%, #090c11 100%);
+      background-attachment: fixed;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: .35;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, .018) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, .018) 1px, transparent 1px);
+      background-size: 42px 42px;
+      -webkit-mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+      mask-image: radial-gradient(circle at 50% 30%, black, transparent 78%);
+    }
+
+    .ico { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+    .ico-svg { width: 16px; height: 16px; display: block; }
+
+    /* ============================================================
+       CABECERA
+       ============================================================ */
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+      padding: 14px clamp(14px, 3vw, 28px);
+      border-bottom: 1px solid var(--border);
+      background: rgba(11, 14, 20, .82);
+      -webkit-backdrop-filter: blur(14px);
+      backdrop-filter: blur(14px);
+    }
+
+    .brand { display: flex; align-items: center; gap: 13px; }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 13px;
+      display: grid;
+      place-items: center;
+      color: var(--green);
+      background: linear-gradient(160deg, rgba(0, 255, 136, .18), rgba(0, 210, 255, .08));
+      border: 1px solid rgba(0, 255, 136, .35);
+      box-shadow: 0 0 26px -6px rgba(0, 255, 136, .45), inset 0 0 20px rgba(0, 255, 136, .08);
+    }
+
+    .brand-mark .ico-svg { width: 23px; height: 23px; }
+
+    .brand h1 {
+      margin: 0;
+      font-size: clamp(17px, 2.2vw, 23px);
+      font-weight: 900;
+      letter-spacing: .045em;
+      text-transform: uppercase;
+      line-height: 1.05;
+    }
+
+    .brand h1 span { color: var(--green); }
+
+    .subtitle {
+      margin: 3px 0 0;
+      font-size: 11.5px;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .status-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .chip::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 9px currentColor;
+    }
+
+    .chip.weather.dry { color: var(--yellow); }
+    .chip.weather.lightRain { color: var(--blue); }
+    .chip.weather.heavyRain { color: #7fb8ff; }
+    .chip.track.green { color: var(--green); }
+    .chip.track.sc { color: var(--yellow); }
+    .chip.track.vsc { color: var(--blue); }
+    .chip.track.red { color: var(--red); }
+
+    /* ============================================================
+       ESTRUCTURA
+       ============================================================ */
+    .layout {
+      width: min(1560px, 100%);
+      margin: 0 auto;
+      padding: clamp(12px, 2.4vw, 24px);
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    @media (min-width: 1040px) {
+      .layout { grid-template-columns: 388px minmax(0, 1fr); }
+      .right { position: sticky; top: 84px; }
+    }
+
+    .panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+    .card {
+      position: relative;
+      padding: 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, .028), transparent 42%),
+        var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: 0 auto auto 0;
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(0, 255, 136, .22), transparent);
+      opacity: .55;
+      pointer-events: none;
+    }
+
+    .card h2 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .card h2 .ico { color: var(--green); }
+
+    .results { display: flex; flex-direction: column; gap: 14px; transition: opacity .2s, filter .2s; }
+    .results.bloqueado { opacity: .35; filter: grayscale(.55); pointer-events: none; }
+
+    /* ============================================================
+       FORMULARIOS
+       ============================================================ */
+    .field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 13px; }
+    .field:last-child { margin-bottom: 0; }
+
+    .field > label,
+    .field-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      color: var(--muted);
+    }
+
+    .field > label output,
+    .field-label output {
+      font-family: var(--mono);
+      color: var(--green);
+      font-size: 12.5px;
+    }
+
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .field-grid .field { margin-bottom: 0; }
+
+    select,
+    input[type="number"] {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      font: inherit;
+      font-size: 13.5px;
+      transition: border-color .16s, box-shadow .16s;
+    }
+
+    select { cursor: pointer; }
+
+    select:focus,
+    input[type="number"]:focus {
+      outline: none;
+      border-color: rgba(0, 255, 136, .7);
+      box-shadow: 0 0 0 3px rgba(0, 255, 136, .12);
+    }
+
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type="number"] { -moz-appearance: textfield; }
+
+    .slider-row { display: flex; align-items: center; gap: 10px; }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1 1 auto;
+      width: 100%;
+      height: 6px;
+      margin: 6px 0;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(0, 255, 136, .85), rgba(35, 48, 71, .9));
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--green);
+      border: 3px solid #07130d;
+      box-shadow: 0 0 0 4px rgba(0, 255, 136, .14), 0 0 14px rgba(0, 255, 136, .55);
+      cursor: grab;
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--green);
+      border: 3px solid #07130d;
+      box-shadow: 0 0 0 4px rgba(0, 255, 136, .14), 0 0 14px rgba(0, 255, 136, .55);
+      cursor: grab;
+    }
+
+    input[type="range"]:active::-webkit-slider-thumb { cursor: grabbing; }
+
+    input[type="range"]:focus-visible {
+      outline: 2px solid var(--green);
+      outline-offset: 4px;
+    }
+
+    .num-mini {
+      width: 74px;
+      flex: 0 0 74px;
+      padding: 8px 6px;
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 12.5px;
+    }
+    /* ============================================================
+       BOTONES SEGMENTADOS Y COMPUESTOS
+       ============================================================ */
+    .segmented { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .seg {
+      flex: 1 1 0;
+      min-width: 66px;
+      padding: 9px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      font: inherit;
+      font-size: 11.5px;
+      font-weight: 600;
+      line-height: 1.1;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .seg:hover { border-color: #3a4a66; color: var(--text); }
+
+    .seg.active {
+      border-color: var(--green);
+      background: linear-gradient(180deg, #00ff88, #00d977);
+      color: #04120b;
+      font-weight: 800;
+      box-shadow: 0 0 22px -4px rgba(0, 255, 136, .55);
+    }
+
+    #statusGroup .seg[data-value="sc"].active {
+      border-color: var(--yellow);
+      background: linear-gradient(180deg, #ffcc00, #e2b200);
+      color: #1a1400;
+      box-shadow: 0 0 22px -4px rgba(255, 204, 0, .55);
+    }
+
+    #statusGroup .seg[data-value="vsc"].active {
+      border-color: var(--blue);
+      background: linear-gradient(180deg, #00d2ff, #00a7cc);
+      color: #001218;
+      box-shadow: 0 0 22px -4px rgba(0, 210, 255, .55);
+    }
+
+    #statusGroup .seg[data-value="red"].active {
+      border-color: var(--red);
+      background: linear-gradient(180deg, #ff3366, #d61f4f);
+      color: #fff;
+      box-shadow: 0 0 22px -4px rgba(255, 51, 102, .55);
+    }
+
+    #weatherGroup .seg[data-value="lightRain"].active {
+      border-color: var(--blue);
+      background: linear-gradient(180deg, #00d2ff, #00a7cc);
+      color: #001218;
+      box-shadow: 0 0 22px -4px rgba(0, 210, 255, .5);
+    }
+
+    #weatherGroup .seg[data-value="heavyRain"].active {
+      border-color: #7fb8ff;
+      background: linear-gradient(180deg, #7fb8ff, #4a8fe0);
+      color: #050b14;
+      box-shadow: 0 0 22px -4px rgba(127, 184, 255, .5);
+    }
+
+    .compound-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-bottom: 13px; }
+
+    .compound {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: .18s ease;
+      text-align: left;
+    }
+
+    .compound:hover { border-color: #3a4a66; color: var(--text); }
+
+    .compound .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      flex: 0 0 11px;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .compound.soft { color: #ff6b8a; }
+    .compound.medium { color: var(--yellow); }
+    .compound.hard { color: #e8edf7; }
+    .compound.intermediate { color: var(--green); }
+    .compound.wet { color: var(--blue); }
+
+    .compound.active {
+      color: var(--text);
+      background: rgba(255, 255, 255, .055);
+      border-color: currentColor;
+    }
+
+    .compound.active .dot { box-shadow: 0 0 14px currentColor, 0 0 0 3px rgba(255, 255, 255, .08); }
+    .compound.active.soft { box-shadow: inset 0 0 0 1px rgba(255, 107, 138, .65), 0 0 18px -6px rgba(255, 51, 102, .7); }
+    .compound.active.medium { box-shadow: inset 0 0 0 1px rgba(255, 204, 0, .65), 0 0 18px -6px rgba(255, 204, 0, .7); }
+    .compound.active.hard { box-shadow: inset 0 0 0 1px rgba(232, 237, 247, .65), 0 0 18px -6px rgba(232, 237, 247, .5); }
+    .compound.active.intermediate { box-shadow: inset 0 0 0 1px rgba(0, 255, 136, .65), 0 0 18px -6px rgba(0, 255, 136, .7); }
+    .compound.active.wet { box-shadow: inset 0 0 0 1px rgba(0, 210, 255, .65), 0 0 18px -6px rgba(0, 210, 255, .7); }
+
+    .hint {
+      margin: 9px 0 0;
+      font-size: 11.5px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .hint.warn { color: var(--yellow); }
+
+    /* ============================================================
+       PROGRESO Y MÉTRICAS
+       ============================================================ */
+    .progress {
+      height: 9px;
+      margin-top: 13px;
+      border-radius: 999px;
+      border: 1px solid var(--border-soft);
+      background: #080c12;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      width: 0;
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+      box-shadow: 0 0 14px rgba(0, 255, 136, .55);
+      transition: width .35s ease;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      margin-top: 6px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      color: var(--muted);
+    }
+
+    .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 13px; }
+
+    .metric {
+      padding: 10px;
+      border-radius: 11px;
+      border: 1px solid var(--border-soft);
+      background: var(--panel-2);
+    }
+
+    .metric span {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .metric strong { font-family: var(--mono); font-size: 14px; color: var(--text); }
+
+    /* ============================================================
+       RIVALES
+       ============================================================ */
+    .rival {
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border-soft);
+      background: var(--panel-2);
+      margin-bottom: 10px;
+    }
+
+    .rival:last-child { margin-bottom: 0; }
+    .rival.ahead { border-left: 3px solid var(--red); }
+    .rival.behind { border-left: 3px solid var(--blue); }
+
+    .rival-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .rival-tag {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .rival-tag.ahead { color: var(--red); }
+    .rival-tag.behind { color: var(--blue); }
+    .rival-gap { font-family: var(--mono); font-size: 12px; color: var(--text); }
+
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 10px;
+      font-size: 11.5px;
+      color: var(--muted);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .toggle input { width: 16px; height: 16px; accent-color: var(--green); cursor: pointer; }
+
+    /* ============================================================
+       RECOMENDACIÓN PRINCIPAL
+       ============================================================ */
+    .hero {
+      border-color: rgba(0, 255, 136, .34);
+      background:
+        radial-gradient(620px 210px at 100% 0%, rgba(0, 255, 136, .13), transparent 70%),
+        linear-gradient(180deg, #121b28, #0d121b);
+      box-shadow: 0 28px 70px -42px rgba(0, 255, 136, .55), var(--shadow);
+    }
+
+    .hero-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--green);
+    }
+
+    .pill {
+      padding: 6px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      font-family: var(--mono);
+      font-size: 12.5px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .pill.confianza.alto { color: var(--green); border-color: rgba(0, 255, 136, .45); background: rgba(0, 255, 136, .09); }
+    .pill.confianza.medio { color: var(--yellow); border-color: rgba(255, 204, 0, .45); background: rgba(255, 204, 0, .08); }
+    .pill.confianza.bajo { color: var(--red); border-color: rgba(255, 51, 102, .45); background: rgba(255, 51, 102, .09); }
+
+    .hero-main {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+    }
+
+    .hero-main h2 {
+      margin: 0 0 6px;
+      font-size: clamp(26px, 4vw, 38px);
+      font-weight: 900;
+      letter-spacing: -.02em;
+      text-transform: uppercase;
+      line-height: .95;
+      color: var(--text);
+    }
+
+    .hero-main h2::first-letter { color: var(--green); }
+
+    .plan-detail {
+      margin: 0;
+      max-width: 58ch;
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+
+    .hero-time { text-align: right; min-width: 170px; }
+    .hero-time .label { display: block; font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    .hero-time strong { display: block; margin: 3px 0; font-family: var(--mono); font-size: clamp(24px, 3.4vw, 34px); color: var(--green); letter-spacing: -.02em; }
+    .hero-time .delta { display: block; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+
+    .comparativa {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 9px;
+      margin-top: 15px;
+    }
+
+    .compare-item {
+      padding: 10px 12px;
+      border-radius: 11px;
+      border: 1px solid var(--border-soft);
+      background: rgba(8, 12, 18, .55);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      min-width: 0;
+    }
+
+    .compare-item span { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+    .compare-item strong { font-family: var(--mono); font-size: 15px; color: var(--text); }
+    .compare-item small { font-family: var(--mono); font-size: 10px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .compare-item.best { border-color: rgba(0, 255, 136, .5); background: rgba(0, 255, 136, .07); }
+    .compare-item.best strong { color: var(--green); }
+    .compare-item.disabled strong { color: var(--muted); }
+
+    .stint-map {
+      display: flex;
+      gap: 3px;
+      height: 46px;
+      margin-top: 15px;
+      padding: 4px;
+      border-radius: 12px;
+      border: 1px solid var(--border-soft);
+      background: rgba(8, 12, 18, .6);
+    }
+
+    .stint {
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      border-radius: 8px;
+      border: 1px solid var(--stint-color, var(--border));
+      background: var(--stint-bg, rgba(255, 255, 255, .04));
+      overflow: hidden;
+      transition: .2s ease;
+    }
+
+    .stint span { position: relative; z-index: 1; font-family: var(--mono); font-size: 11px; font-weight: 900; color: #fff; text-shadow: 0 1px 4px #000; }
+    .stint small { position: relative; z-index: 1; font-family: var(--mono); font-size: 9px; color: rgba(255, 255, 255, .82); text-shadow: 0 1px 4px #000; }
+    .stint:hover { filter: brightness(1.18); }
+    .stint.empty { flex: 1; display: grid; place-items: center; color: var(--muted); font-size: 11px; }
+    /* ============================================================
+       TARJETAS TÁCTICAS
+       ============================================================ */
+    .grid-2 { display: grid; grid-template-columns: 1fr; gap: 14px; }
+
+    @media (min-width: 760px) {
+      .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    .big-value {
+      font-family: var(--mono);
+      font-size: clamp(24px, 3.2vw, 33px);
+      font-weight: 800;
+      letter-spacing: -.02em;
+      color: var(--green);
+      line-height: 1;
+      margin: 2px 0 8px;
+    }
+
+    .action-badge {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 11px 12px;
+      border-radius: 11px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      font-size: 12.5px;
+      font-weight: 800;
+      line-height: 1.25;
+      color: var(--text);
+    }
+
+    .action-badge .ico-svg { width: 17px; height: 17px; }
+
+    .action-badge.undercut { border-color: rgba(255, 51, 102, .5); background: rgba(255, 51, 102, .1); color: #ff8aa5; }
+    .action-badge.cover { border-color: rgba(255, 204, 0, .5); background: rgba(255, 204, 0, .09); color: var(--yellow); }
+    .action-badge.hold { border-color: rgba(255, 204, 0, .4); background: rgba(255, 204, 0, .07); color: var(--yellow); }
+    .action-badge.overcut,
+    .action-badge.seguir { border-color: rgba(0, 210, 255, .4); background: rgba(0, 210, 255, .08); color: var(--blue); }
+    .action-badge.box { border-color: rgba(0, 255, 136, .5); background: rgba(0, 255, 136, .1); color: var(--green); }
+    .action-badge.rain { border-color: rgba(0, 210, 255, .5); background: rgba(0, 210, 255, .1); color: var(--blue); }
+    .action-badge.dry { border-color: rgba(0, 255, 136, .4); background: rgba(0, 255, 136, .08); color: var(--green); }
+    .action-badge.red { border-color: rgba(255, 51, 102, .55); background: rgba(255, 51, 102, .12); color: #ff8aa5; }
+    .action-badge.neutral { border-color: var(--border); background: var(--panel-2); color: var(--muted); }
+
+    /* ============================================================
+       MATRIZ DE PROBABILIDAD
+       ============================================================ */
+    .prob-row { margin-bottom: 13px; }
+    .prob-row:last-child { margin-bottom: 0; }
+
+    .prob-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 6px;
+    }
+
+    .prob-head > span { display: flex; flex-direction: column; gap: 1px; font-size: 12px; font-weight: 700; color: var(--text); }
+    .prob-head small { font-family: var(--mono); font-size: 9.5px; font-weight: 400; color: var(--muted); }
+    .prob-head strong { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+
+    .prob-head strong.alto { color: var(--green); }
+    .prob-head strong.medio { color: var(--yellow); }
+    .prob-head strong.bajo { color: var(--red); }
+    .prob-head strong.muted { color: var(--muted); }
+
+    .bar { height: 8px; border-radius: 999px; background: #080c12; border: 1px solid var(--border-soft); overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; transition: width .45s ease; }
+    .bar-fill.alto { background: linear-gradient(90deg, #00b564, var(--green)); box-shadow: 0 0 12px rgba(0, 255, 136, .45); }
+    .bar-fill.medio { background: linear-gradient(90deg, #b38f00, var(--yellow)); box-shadow: 0 0 12px rgba(255, 204, 0, .35); }
+    .bar-fill.bajo { background: linear-gradient(90deg, #b31d45, var(--red)); box-shadow: 0 0 12px rgba(255, 51, 102, .35); }
+    .bar-fill.muted { background: var(--border); }
+
+    /* ============================================================
+       CONTROLES Y AVISOS
+       ============================================================ */
+    .controls { display: flex; flex-wrap: wrap; gap: 9px; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      flex: 1 1 170px;
+      padding: 12px 15px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--panel-2);
+      color: var(--text);
+      font: inherit;
+      font-size: 12.5px;
+      font-weight: 800;
+      letter-spacing: .02em;
+      cursor: pointer;
+      transition: .18s ease;
+    }
+
+    .btn:hover { transform: translateY(-1px); border-color: #3a4a66; }
+    .btn:active { transform: translateY(0); }
+
+    .btn.primary {
+      border-color: transparent;
+      background: linear-gradient(180deg, #00ff88, #00d977);
+      color: #04120b;
+      box-shadow: 0 14px 34px -14px rgba(0, 255, 136, .7);
+    }
+
+    .btn.primary:hover { box-shadow: 0 16px 38px -12px rgba(0, 255, 136, .85); }
+
+    .btn.warning {
+      border-color: transparent;
+      background: linear-gradient(180deg, #ffcc00, #e0b000);
+      color: #1a1400;
+      box-shadow: 0 14px 34px -16px rgba(255, 204, 0, .7);
+    }
+
+    .btn.ghost { background: transparent; color: var(--muted); }
+    .btn.ghost:hover { color: var(--text); }
+
+    .btn:disabled { opacity: .35; cursor: not-allowed; transform: none; box-shadow: none; }
+
+    .btn:focus-visible,
+    .seg:focus-visible,
+    .compound:focus-visible,
+    select:focus-visible,
+    .toggle input:focus-visible {
+      outline: 2px solid var(--green);
+      outline-offset: 2px;
+    }
+
+    .banner.error {
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 51, 102, .5);
+      background: rgba(255, 51, 102, .1);
+      color: #ffb3c6;
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+
+    .banner.error strong { color: #ff8aa5; }
+    .banner.error ul { margin: 5px 0 0; padding-left: 18px; }
+
+    .hidden { display: none !important; }
+
+    .empty { color: var(--muted); font-size: 12px; }
+
+    /* ============================================================
+       RESPONSIVE
+       ============================================================ */
+    @media (max-width: 760px) {
+      .comparativa { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 520px) {
+      .hero-main { align-items: flex-start; }
+      .hero-time { text-align: left; }
+      .hero-time strong { font-size: 28px; }
+      .compound-grid { grid-template-columns: 1fr 1fr; }
+      .field-grid { grid-template-columns: 1fr; }
+      .topbar { gap: 10px; }
+      .status-chips { width: 100%; }
+      .chip { flex: 1 1 auto; justify-content: center; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { transition: none !important; animation: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <noscript>
+    <div class="banner error" role="alert" style="margin:16px">Este simulador necesita JavaScript activado para calcular la estrategia.</div>
+  </noscript>
+
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark"><span class="ico" data-icon="flag"></span></div>
+      <div>
+        <h1>Pit Wall <span>Commander</span></h1>
+        <p class="subtitle">Centro táctico de estrategia · <span id="circuitNameTop">Mónaco</span></p>
+      </div>
+    </div>
+    <div class="status-chips">
+      <span class="chip weather dry" id="chipWeather">Seco</span>
+      <span class="chip track green" id="chipTrack">BANDERA VERDE</span>
+      <span class="chip" id="chipLap">V 24 / 78</span>
+    </div>
+  </header>
+
+  <main class="layout">
+
+    <!-- ==========================================================
+         PANEL IZQUIERDO: TELEMETRÍA E INPUTS
+         ========================================================== -->
+    <aside class="panel left">
+
+      <section class="card">
+        <h2><span class="ico" data-icon="flag"></span> Circuito</h2>
+        <div class="field">
+          <label for="circuitSelect">Gran Premio</label>
+          <select id="circuitSelect"></select>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span>Pérdida en boxes</span><strong id="circuitPitLoss">21.5 s</strong></div>
+          <div class="metric"><span>Abrasión</span><strong id="circuitAbrasion">Baja</strong></div>
+          <div class="metric"><span>Vuelta base</span><strong id="circuitBase">1:15.5</strong></div>
+          <div class="metric"><span>Vueltas</span><strong id="circuitLaps">78</strong></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="ico" data-icon="gauge"></span> Posición y vueltas</h2>
+        <div class="field-grid">
+          <div class="field">
+            <label for="startPosRange">Posición en pista <output id="posOut" for="startPosRange startPos">3</output></label>
+            <div class="slider-row">
+              <input type="range" id="startPosRange" min="1" max="20" step="1" value="3">
+              <input type="number" id="startPos" min="1" max="20" step="1" value="3" class="num-mini" aria-label="Posición en pista">
+            </div>
+          </div>
+          <div class="field">
+            <label for="currentLapRange">Vuelta actual <output id="lapOut" for="currentLapRange currentLap">24</output></label>
+            <div class="slider-row">
+              <input type="range" id="currentLapRange" min="1" max="78" step="1" value="24">
+              <input type="number" id="currentLap" min="1" max="78" step="1" value="24" class="num-mini" aria-label="Vuelta actual">
+            </div>
+          </div>
+        </div>
+        <div class="field" style="margin-top:13px">
+          <label for="totalLaps">Vueltas totales</label>
+          <input type="number" id="totalLaps" min="1" max="100" step="1" value="78">
+        </div>
+        <div class="progress" aria-hidden="true"><div class="progress-fill" id="lapProgress"></div></div>
+        <div class="progress-label">
+          <span id="progressText">24 / 78 vueltas</span>
+          <span id="progressPct">31%</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="ico" data-icon="cloud"></span> Clima y estado de pista</h2>
+        <div class="field">
+          <span class="field-label">Estado del clima</span>
+          <div class="segmented" id="weatherGroup" role="group" aria-label="Estado del clima">
+            <button type="button" class="seg active" data-value="dry" aria-pressed="true">Seco</button>
+            <button type="button" class="seg" data-value="lightRain" aria-pressed="false">Lluvia ligera</button>
+            <button type="button" class="seg" data-value="heavyRain" aria-pressed="false">Lluvia intensa</button>
+          </div>
+        </div>
+        <div class="field">
+          <span class="field-label">Estado de pista</span>
+          <div class="segmented" id="statusGroup" role="group" aria-label="Estado de pista">
+            <button type="button" class="seg active" data-value="green" aria-pressed="true">Verde</button>
+            <button type="button" class="seg" data-value="sc" aria-pressed="false">SC</button>
+            <button type="button" class="seg" data-value="vsc" aria-pressed="false">VSC</button>
+            <button type="button" class="seg" data-value="red" aria-pressed="false">Bandera roja</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2><span class="ico" data-icon="tire"></span> Neumático actual</h2>
+        <div class="compound-grid" id="compoundGroup" role="group" aria-label="Compuesto actual">
+          <button type="button" class="compound soft active" data-value="soft" aria-pressed="true"><span class="dot"></span>Blando</button>
+          <button type="button" class="compound medium" data-value="medium" aria-pressed="false"><span class="dot"></span>Medio</button>
+          <button type="button" class="compound hard" data-value="hard" aria-pressed="false"><span class="dot"></span>Duro</button>
+          <button type="button" class="compound intermediate" data-value="intermediate" aria-pressed="false"><span class="dot"></span>Intermedio</button>
+          <button type="button" class="compound wet" data-value="wet" aria-pressed="false"><span class="dot"></span>Lluvia</button>
+        </div>
+        <div class="field">
+          <label for="tireAgeRange">Vueltas en el compuesto <output id="tireAgeOut" for="tireAgeRange tireAge">14</output></label>
+          <div class="slider-row">
+            <input type="range" id="tireAgeRange" min="0" max="80" step="1" value="14">
+            <input type="number" id="tireAge" min="0" max="80" step="1" value="14" class="num-mini" aria-label="Vueltas en el compuesto">
+          </div>
+        </div>
+        <p class="hint" id="compoundHint">Mezcla recomendada en seco para Mónaco: Blando o Medio.</p>
+      </section>
+
+      <section class="card">
+        <h2><span class="ico" data-icon="car"></span> Rivales</h2>
+
+        <div class="rival ahead">
+          <div class="rival-head">
+            <span class="rival-tag ahead">Coche delante</span>
+            <span class="rival-gap" id="aheadGapLabel">0.8 s</span>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="aheadCompound">Compuesto</label>
+              <select id="aheadCompound"></select>
+            </div>
+            <div class="field">
+              <label for="aheadDelta">Delta (s)</label>
+              <input type="number" id="aheadDelta" min="0" max="10" step="0.1" value="0.8">
+            </div>
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label for="aheadGapRange">Diferencia <output id="aheadGapOut" for="aheadGapRange aheadDelta">0.8</output> s</label>
+            <input type="range" id="aheadGapRange" min="0" max="10" step="0.1" value="0.8">
+          </div>
+          <label class="toggle" for="aheadDrs">
+            <input type="checkbox" id="aheadDrs" checked>
+            <span>En ventana de DRS (&lt; 1.0 s)</span>
+          </label>
+        </div>
+
+        <div class="rival behind">
+          <div class="rival-head">
+            <span class="rival-tag behind">Coche detrás</span>
+            <span class="rival-gap" id="behindGapLabel">1.1 s</span>
+          </div>
+          <div class="field-grid">
+            <div class="field">
+              <label for="behindCompound">Compuesto</label>
+              <select id="behindCompound"></select>
+            </div>
+            <div class="field">
+              <label for="behindDelta">Delta (s)</label>
+              <input type="number" id="behindDelta" min="0" max="10" step="0.1" value="1.1">
+            </div>
+          </div>
+          <div class="field" style="margin-top:10px">
+            <label for="behindGapRange">Diferencia <output id="behindGapOut" for="behindGapRange behindDelta">1.1</output> s</label>
+            <input type="range" id="behindGapRange" min="0" max="10" step="0.1" value="1.1">
+          </div>
+          <label class="toggle" for="behindDrs">
+            <input type="checkbox" id="behindDrs">
+            <span>En ventana de DRS (&lt; 1.0 s)</span>
+          </label>
+        </div>
+      </section>
+
+    </aside>
+    <!-- ==========================================================
+         PANEL DERECHO: CÁLCULOS Y RECOMENDACIONES
+         ========================================================== -->
+    <section class="panel right">
+
+      <div id="validationBanner" class="banner error hidden" role="alert"></div>
+
+      <div id="resultsArea" class="results">
+
+        <section class="card hero">
+          <div class="hero-top">
+            <span class="eyebrow"><span class="ico" data-icon="target"></span> Recomendación principal</span>
+            <span class="pill confianza alto" id="confidencePill">--%</span>
+          </div>
+          <div class="hero-main">
+            <div>
+              <h2 id="planTitle">1 Parada</h2>
+              <p class="plan-detail" id="planDetail" aria-live="polite" aria-atomic="true">Calculando estrategia óptima…</p>
+            </div>
+            <div class="hero-time">
+              <span class="label">Tiempo restante estimado</span>
+              <strong id="planTime">--</strong>
+              <span class="delta" id="planDelta">--</span>
+            </div>
+          </div>
+          <div class="comparativa" id="comparativa">
+            <div class="compare-item"><span>Sin paradas</span><strong>--</strong><small>—</small></div>
+            <div class="compare-item"><span>1 parada</span><strong>--</strong><small>—</small></div>
+            <div class="compare-item"><span>2 paradas</span><strong>--</strong><small>—</small></div>
+          </div>
+          <div class="stint-map" id="stintMap" role="img" aria-label="Plan de relevos"></div>
+        </section>
+
+        <div class="grid-2">
+
+          <section class="card">
+            <h2><span class="ico" data-icon="timer"></span> Ventana de parada</h2>
+            <div class="big-value" id="pitWindow">--</div>
+            <p class="hint" id="pitWindowDetail">Calculando ventana óptima…</p>
+          </section>
+
+          <section class="card">
+            <h2><span class="ico" data-icon="zap"></span> Acción inmediata</h2>
+            <div class="action-badge neutral" id="actionBadge">Analizando…</div>
+            <p class="hint" id="actionDetail">Evaluando undercut, overcut y cobertura defensiva.</p>
+          </section>
+
+          <section class="card">
+            <h2><span class="ico" data-icon="shield"></span> Protocolo SC / VSC</h2>
+            <div class="action-badge neutral" id="scBadge">Analizando…</div>
+            <p class="hint" id="scDetail">Esperando estado de pista.</p>
+          </section>
+
+          <section class="card">
+            <h2><span class="ico" data-icon="cloud"></span> Cruce de clima</h2>
+            <div class="action-badge neutral" id="weatherBadge">Analizando…</div>
+            <p class="hint" id="weatherDetail">Evaluando la transición entre seco y lluvia.</p>
+          </section>
+
+        </div>
+
+        <section class="card">
+          <h2><span class="ico" data-icon="activity"></span> Matriz de probabilidad de éxito</h2>
+          <div id="probabilityMatrix"></div>
+        </section>
+
+        <section class="card controls">
+          <button type="button" class="btn primary" id="simulateLap"><span class="ico" data-icon="play"></span> Simular siguiente vuelta</button>
+          <button type="button" class="btn warning" id="deploySc"><span class="ico" data-icon="flag"></span> Desplegar SC</button>
+          <button type="button" class="btn ghost" id="resetBtn"><span class="ico" data-icon="rotate"></span> Reiniciar</button>
+        </section>
+
+      </div>
+    </section>
+
+  </main>
+  <script>
+    'use strict';
+
+    /* ============================================================
+       1. DATOS BASE Y CONSTANTES
+       ============================================================ */
+
+    const $ = (id) => document.getElementById(id);
+
+    // Cada circuito define el ritmo base, la pérdida en boxes y su nivel de abrasión.
+    const CIRCUITOS = {
+      monaco:      { nombre: 'Mónaco',            baseLapTime: 75.5,  pitLoss: 21.5, abrasion: 0.015, totalLaps: 78, abrasionLabel: 'Baja' },
+      monza:       { nombre: 'Monza',             baseLapTime: 82.0,  pitLoss: 23.0, abrasion: 0.020, totalLaps: 53, abrasionLabel: 'Media-baja' },
+      spa:         { nombre: 'Spa-Francorchamps', baseLapTime: 106.0, pitLoss: 22.5, abrasion: 0.035, totalLaps: 44, abrasionLabel: 'Media' },
+      silverstone: { nombre: 'Silverstone',       baseLapTime: 88.5,  pitLoss: 22.0, abrasion: 0.050, totalLaps: 52, abrasionLabel: 'Alta' },
+      bahrain:     { nombre: 'Bahréin',           baseLapTime: 92.0,  pitLoss: 22.8, abrasion: 0.075, totalLaps: 57, abrasionLabel: 'Muy alta' },
+      singapore:   { nombre: 'Singapur',          baseLapTime: 95.0,  pitLoss: 24.0, abrasion: 0.060, totalLaps: 62, abrasionLabel: 'Alta' },
+      suzuka:      { nombre: 'Suzuka',            baseLapTime: 90.0,  pitLoss: 22.0, abrasion: 0.055, totalLaps: 53, abrasionLabel: 'Alta' },
+      interlagos:  { nombre: 'Interlagos',        baseLapTime: 71.5,  pitLoss: 21.0, abrasion: 0.050, totalLaps: 71, abrasionLabel: 'Alta' },
+      barcelona:   { nombre: 'Barcelona',         baseLapTime: 78.0,  pitLoss: 22.0, abrasion: 0.060, totalLaps: 66, abrasionLabel: 'Alta' },
+      jeddah:      { nombre: 'Yeda',              baseLapTime: 89.0,  pitLoss: 23.0, abrasion: 0.040, totalLaps: 50, abrasionLabel: 'Media' },
+      austria:     { nombre: 'Austria',           baseLapTime: 66.0,  pitLoss: 21.5, abrasion: 0.035, totalLaps: 71, abrasionLabel: 'Media' },
+      zandvoort:   { nombre: 'Zandvoort',         baseLapTime: 72.0,  pitLoss: 21.5, abrasion: 0.045, totalLaps: 72, abrasionLabel: 'Media-alta' },
+      qatar:       { nombre: 'Losail',            baseLapTime: 84.0,  pitLoss: 22.5, abrasion: 0.065, totalLaps: 57, abrasionLabel: 'Alta' },
+      abudhabi:    { nombre: 'Yas Marina',        baseLapTime: 86.0,  pitLoss: 21.8, abrasion: 0.035, totalLaps: 58, abrasionLabel: 'Media' },
+      austin:      { nombre: 'Austin',          baseLapTime: 105.0, pitLoss: 21.5, abrasion: 0.050, totalLaps: 56, abrasionLabel: 'Media' },
+      mexiko:      { nombre: 'Ciudad de México',baseLapTime: 73.0,  pitLoss: 22.0, abrasion: 0.060, totalLaps: 71, abrasionLabel: 'Alta' },
+      las_vegas:   { nombre: 'Las Vegas',       baseLapTime: 95.0,  pitLoss: 23.0, abrasion: 0.070, totalLaps: 50, abrasionLabel: 'Muy alta' },
+      budapest:    { nombre: 'Budapest',        baseLapTime: 83.0,  pitLoss: 22.5, abrasion: 0.050, totalLaps: 70, abrasionLabel: 'Alta' },
+      shanghai:    { nombre: 'Shanghai',        baseLapTime: 77.0,  pitLoss: 21.5, abrasion: 0.055, totalLaps: 56, abrasionLabel: 'Media' },
+      melbourne:   { nombre: 'Melbourne',       baseLapTime: 98.0,  pitLoss: 24.0, abrasion: 0.065, totalLaps: 58, abrasionLabel: 'Alta' },
+      miami:       { nombre: 'Miami',           baseLapTime: 92.0,  pitLoss: 22.0, abrasion: 0.050, totalLaps: 57, abrasionLabel: 'Muy alta' }
+    };
+
+    // Diferencias en seco y factor de degradación de cada compuesto.
+    const COMPOUNDS = {
+      soft:         { nombre: 'Blando',     short: 'S', color: '#ff3366', dryDelta: -0.60, degFactor: 1.7 },
+      medium:       { nombre: 'Medio',      short: 'M', color: '#ffcc00', dryDelta: -0.25, degFactor: 1.0 },
+      hard:         { nombre: 'Duro',       short: 'H', color: '#e8edf7', dryDelta:  0.10, degFactor: 0.6 },
+      intermediate: { nombre: 'Intermedio', short: 'I', color: '#00ff88', dryDelta:  0.00, degFactor: 1.1 },
+      wet:          { nombre: 'Lluvia',     short: 'W', color: '#00d2ff', dryDelta:  0.00, degFactor: 1.0 }
+    };
+
+    // El clima altera el ritmo base, la penalización de cada compuesto y la degradación.
+    const WEATHER = {
+      dry:       { nombre: 'Seco',          baseFactor: 1.000, slickPenalty: 0,  interPenalty: 7.5, wetPenalty: 14.0, degFactor: 1.0 },
+      lightRain: { nombre: 'Lluvia ligera', baseFactor: 1.055, slickPenalty: 11, interPenalty: 0.0, wetPenalty: 4.5,  degFactor: 0.9 },
+      heavyRain: { nombre: 'Lluvia intensa', baseFactor: 1.120, slickPenalty: 24, interPenalty: 6.0, wetPenalty: 0.0,  degFactor: 0.8 }
+    };
+
+    const STATUS = {
+      green: { label: 'Bandera verde',   full: 'Bandera verde',          clase: 'green' },
+      sc:    { label: 'SC',              full: 'Coche de seguridad',     clase: 'sc' },
+      vsc:   { label: 'VSC',             full: 'Coche de seguridad virtual', clase: 'vsc' },
+      red:   { label: 'Bandera roja',    full: 'Bandera roja',           clase: 'red' }
+    };
+
+    const FUEL_EFFECT_PER_LAP = 0.028;
+    const MIN_STINT_LAPS = 5;
+    const GAP_MAXIMO = 10;
+
+    const ESTADO_INICIAL = {
+      circuitKey: 'monaco',
+      startPos: 3,
+      currentLap: 24,
+      totalLaps: 78,
+      weather: 'dry',
+      trackStatus: 'green',
+      compound: 'medium',
+      tireAge: 14,
+      ahead: { compound: 'soft', delta: 0.8, drs: true },
+      behind: { compound: 'medium', delta: 1.1, drs: false },
+      finalizada: false
+    };
+
+    let estado = clonar(ESTADO_INICIAL);
+    let renderTimer = null;
+
+    /* ============================================================
+       2. ICONOS SVG (estilo Lucide, sin dependencias externas)
+       ============================================================ */
+
+    const ICONS = {
+      flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
+      gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+      target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+      cloud: '<path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M16 14v6"/><path d="M8 14v6"/><path d="M12 16v6"/>',
+      tire: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3"/><path d="M12 19v3"/><path d="M2 12h3"/><path d="M19 12h3"/>',
+      alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+      wrench: '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+      zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+      shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/>',
+      activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+      play: '<polygon points="6 3 20 12 6 21 6 3"/>',
+      rotate: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+      timer: '<line x1="10" x2="14" y1="2" y2="2"/><line x1="12" x2="15" y1="14" y2="11"/><circle cx="12" cy="14" r="8"/>',
+      car: '<path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/>'
+    };
+
+    function icono(nombre) {
+      return '<svg class="ico-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[nombre] || '') + '</svg>';
+    }
+
+    /* ============================================================
+       3. UTILIDADES GENERALES
+       ============================================================ */
+
+    function clonar(obj) { return JSON.parse(JSON.stringify(obj)); }
+    function limitar(n, min, max) { return Math.min(max, Math.max(min, n)); }
+    function redondear1(n) { return Math.round(n * 10) / 10; }
+
+    function formatearTiempo(segundos) {
+      if (!Number.isFinite(segundos)) return '—';
+      const decimas = Math.round(segundos * 10);
+      const h = Math.floor(decimas / 36000);
+      const m = Math.floor((decimas % 36000) / 600);
+      const s = Math.floor((decimas % 600) / 10);
+      const d = decimas % 10;
+      if (h > 0) return h + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0') + '.' + d;
+      return m + ':' + String(s).padStart(2, '0') + '.' + d;
+    }
+
+    function formatearVuelta(segundos) {
+      if (!Number.isFinite(segundos)) return '—';
+      const m = Math.floor(segundos / 60);
+      const s = segundos % 60;
+      return m + ':' + s.toFixed(1).padStart(4, '0');
+    }
+
+    function claseScore(score) {
+      if (!Number.isFinite(score)) return 'muted';
+      if (score >= 82) return 'alto';
+      if (score >= 60) return 'medio';
+      return 'bajo';
+    }
+
+    /* ============================================================
+       4. MOTOR DE SIMULACIÓN
+       ============================================================ */
+
+    function circuitoActual() { return CIRCUITOS[estado.circuitKey]; }
+
+    function compuestosPermitidos(clima) {
+      if (clima === 'dry') return ['soft', 'medium', 'hard'];
+      if (clima === 'lightRain') return ['intermediate', 'wet'];
+      return ['wet', 'intermediate'];
+    }
+
+    function deltaCompuesto(compuesto, clima) {
+      const esSlick = ['soft', 'medium', 'hard'].indexOf(compuesto) !== -1;
+      if (clima === 'dry') {
+        if (esSlick) return COMPOUNDS[compuesto].dryDelta;
+        return WEATHER.dry[compuesto === 'intermediate' ? 'interPenalty' : 'wetPenalty'];
+      }
+      if (esSlick) return COMPOUNDS[compuesto].dryDelta + WEATHER[clima].slickPenalty;
+      return WEATHER[clima][compuesto === 'intermediate' ? 'interPenalty' : 'wetPenalty'];
+    }
+
+    // Fórmula física exacta:
+    // tiempo_vuelta = tiempo_base + delta_compuesto + (degradacion * edad_neumatico^1.15) - efecto_combustible
+    function tiempoVuelta(circ, compuesto, edad, vuelta, total, clima) {
+      const tiempoBase = circ.baseLapTime * WEATHER[clima].baseFactor;
+      const delta = deltaCompuesto(compuesto, clima);
+      const degradacion = circ.abrasion * COMPOUNDS[compuesto].degFactor * WEATHER[clima].degFactor;
+      const efectoCombustible = FUEL_EFFECT_PER_LAP * (total - vuelta);
+      return tiempoBase + delta + (degradacion * Math.pow(Math.max(0, edad), 1.15)) - efectoCombustible;
+    }
+
+    function perdidaPitActual() {
+      if (estado.trackStatus === 'sc' || estado.trackStatus === 'vsc') return 12;
+      if (estado.trackStatus === 'red') return 0;
+      return circuitoActual().pitLoss;
+    }
+
+    // La neutralización solo abarata la parada inmediata; las paradas futuras
+    // se calculan con la pérdida verde para no asumir un SC permanente.
+    function perdidaPitParada(vuelta) {
+      return vuelta === estado.currentLap ? perdidaPitActual() : circuitoActual().pitLoss;
+    }
+
+    function esCompuestoSeco(compuesto) {
+      return ['soft', 'medium', 'hard'].indexOf(compuesto) !== -1;
+    }
+
+    function nombrePlan(plan) {
+      if (!plan) return 'Sin plan';
+      if (plan.paradas === 0) return 'Sin paradas';
+      return plan.paradas + ' Parada' + (plan.paradas > 1 ? 's' : '');
+    }
+
+    // Precalcula el coste de un relevo nuevo para cada compuesto y par de vueltas.
+    function precomputarFrescos(circ, clima, total, compuestos) {
+      const tabla = {};
+      for (let i = 0; i < compuestos.length; i++) {
+        const comp = compuestos[i];
+        const filas = [];
+        for (let desde = 1; desde <= total; desde++) {
+          const acum = new Array(total + 2).fill(0);
+          let suma = 0;
+          for (let hasta = desde; hasta <= total; hasta++) {
+            suma += tiempoVuelta(circ, comp, hasta - desde, hasta, total, clima);
+            acum[hasta] = suma;
+          }
+          filas[desde] = acum;
+        }
+        tabla[comp] = filas;
+      }
+      return tabla;
+    }
+
+    // Precalcula el coste del relevo actual conservando la edad real del neumático.
+    function precomputarActual(circ, inicio, total) {
+      const pref = new Array(total + 2).fill(0);
+      for (let vuelta = inicio; vuelta <= total; vuelta++) {
+        const edad = estado.tireAge + (vuelta - inicio);
+        const coste = tiempoVuelta(circ, estado.compound, edad, vuelta, total, estado.weather);
+        pref[vuelta] = (pref[vuelta - 1] || 0) + coste;
+      }
+      return pref;
+    }
+
+    function generarPlanes(numParadas, ctx) {
+      const porInicio = new Map();
+      let mejor = null;
+
+      function registrar(plan) {
+        const previo = porInicio.get(plan.primerPit);
+        if (!previo || plan.tiempo < previo.tiempo) porInicio.set(plan.primerPit, plan);
+        if (!mejor || plan.tiempo < mejor.tiempo) mejor = plan;
+      }
+
+      if (ctx.inicio > ctx.total) return { mejor: null, porInicio: porInicio };
+
+      if (numParadas === 0) {
+        const tiempo = ctx.actual[ctx.total];
+        if (Number.isFinite(tiempo)) {
+          registrar({ paradas: 0, primerPit: null, stops: [], tiempo: tiempo, costeParadas: 0 });
+        }
+      } else if (numParadas === 1) {
+        for (let p = ctx.inicio; p < ctx.total; p++) {
+          const t1 = ctx.actual[p];
+          if (!Number.isFinite(t1)) continue;
+          const coste = perdidaPitParada(p);
+          for (let i = 0; i < ctx.compuestos.length; i++) {
+            const c2 = ctx.compuestos[i];
+            const fila = ctx.tabla[c2][p + 1];
+            const t2 = fila ? fila[ctx.total] : 0;
+            const tiempo = t1 + coste + t2;
+            if (!Number.isFinite(tiempo)) continue;
+            registrar({
+              paradas: 1,
+              primerPit: p,
+              stops: [{ lap: p, compound: c2 }],
+              tiempo: tiempo,
+              costeParadas: coste
+            });
+          }
+        }
+      } else {
+        for (let p1 = ctx.inicio; p1 < ctx.total - MIN_STINT_LAPS; p1++) {
+          const t1 = ctx.actual[p1];
+          if (!Number.isFinite(t1)) continue;
+          const coste1 = perdidaPitParada(p1);
+          for (let p2 = p1 + MIN_STINT_LAPS; p2 < ctx.total; p2++) {
+            const coste2 = perdidaPitParada(p2);
+            for (let i = 0; i < ctx.compuestos.length; i++) {
+              const c2 = ctx.compuestos[i];
+              const fila2 = ctx.tabla[c2][p1 + 1];
+              const t2 = fila2 ? fila2[p2] : 0;
+              for (let j = 0; j < ctx.compuestos.length; j++) {
+                const c3 = ctx.compuestos[j];
+                const fila3 = ctx.tabla[c3][p2 + 1];
+                const t3 = fila3 ? fila3[ctx.total] : 0;
+                const tiempo = t1 + coste1 + t2 + coste2 + t3;
+                if (!Number.isFinite(tiempo)) continue;
+                registrar({
+                  paradas: 2,
+                  primerPit: p1,
+                  stops: [{ lap: p1, compound: c2 }, { lap: p2, compound: c3 }],
+                  tiempo: tiempo,
+                  costeParadas: coste1 + coste2
+                });
+              }
+            }
+          }
+        }
+      }
+      return { mejor: mejor, porInicio: porInicio };
+    }
+
+    function calcularVentana(porInicio, mejor) {
+      if (!mejor) return null;
+      const tolerancia = 0.8;
+      let min = Infinity;
+      let max = -Infinity;
+      porInicio.forEach(function (plan, vuelta) {
+        if (plan.tiempo <= mejor.tiempo + tolerancia) {
+          if (vuelta < min) min = vuelta;
+          if (vuelta > max) max = vuelta;
+        }
+      });
+      if (!Number.isFinite(min)) { min = mejor.primerPit; max = mejor.primerPit; }
+      const margen = 4;
+      const maxPit = mejor.paradas === 1 ? estado.totalLaps - 1 : estado.totalLaps - 2;
+      return {
+        min: Math.max(estado.currentLap, mejor.primerPit - margen, min),
+        max: Math.min(maxPit, mejor.primerPit + margen, max)
+      };
+    }
+
+    function calcularResultados() {
+      const circ = circuitoActual();
+      const total = estado.totalLaps;
+      const inicio = estado.currentLap;
+      const compuestos = compuestosPermitidos(estado.weather);
+      const tabla = precomputarFrescos(circ, estado.weather, total, compuestos);
+      const actual = precomputarActual(circ, inicio, total);
+      const ctx = {
+        total: total,
+        inicio: inicio,
+        compuestos: compuestos,
+        tabla: tabla,
+        actual: actual
+      };
+      const r0 = generarPlanes(0, ctx);
+      const r1 = generarPlanes(1, ctx);
+      const r2 = generarPlanes(2, ctx);
+      const plan0 = r0.mejor;
+      const plan1 = r1.mejor;
+      const plan2 = r2.mejor;
+      const viables = [plan0, plan1, plan2].filter(Boolean).sort(function (a, b) { return a.tiempo - b.tiempo; });
+      const mejor = viables[0] || null;
+      const alterno = viables[1] || null;
+      let ventana = null;
+      if (mejor && mejor.paradas === 1) ventana = calcularVentana(r1.porInicio, mejor);
+      else if (mejor && mejor.paradas === 2) ventana = calcularVentana(r2.porInicio, mejor);
+      const accion = calcularAccionInmediata();
+      const protocolo = calcularProtocoloSC();
+      const clima = calcularCruceClima();
+      const p0score = plan0 && mejor ? puntuarPlan(plan0, mejor.tiempo) : null;
+      const p1score = plan1 && mejor ? puntuarPlan(plan1, mejor.tiempo) : null;
+      const p2score = plan2 && mejor ? puntuarPlan(plan2, mejor.tiempo) : null;
+      return {
+        plan0: plan0, plan1: plan1, plan2: plan2, mejor: mejor, alterno: alterno, ventana: ventana,
+        accion: accion, protocolo: protocolo, clima: clima,
+        p0score: p0score, p1score: p1score, p2score: p2score, compuestos: compuestos
+      };
+    }
+
+    /* ============================================================
+       5. LÓGICA TÁCTICA: ATAQUES, NEUTRALIZACIONES Y CLIMA
+       ============================================================ */
+
+    function calcularAccionInmediata() {
+      const compActual = COMPOUNDS[estado.compound];
+      const esSlick = esCompuestoSeco(estado.compound);
+      const mojado = estado.weather !== 'dry';
+      const gapDelante = estado.ahead.delta;
+      const gapDetras = estado.behind.delta;
+
+      if (estado.trackStatus === 'red') {
+        return {
+          tipo: 'red',
+          titulo: 'Bandera roja · Cambio gratuito',
+          detalle: 'La carrera está detenida: cambia de neumático sin coste y prepara el reinicio con el compuesto adecuado.',
+          score: 97
+        };
+      }
+
+      if (mojado && esSlick) {
+        const ideal = estado.weather === 'heavyRain' ? 'wet' : 'intermediate';
+        return {
+          tipo: 'box',
+          titulo: 'BOX AHORA · ' + COMPOUNDS[ideal].nombre,
+          detalle: 'Estás con ' + compActual.nombre + ' en pista mojada. Monta ' + COMPOUNDS[ideal].nombre.toLowerCase() + ': los neumáticos lisos pierden ~' + (estado.weather === 'heavyRain' ? 24 : 11) + ' s por vuelta.',
+          score: 94
+        };
+      }
+
+      if (!mojado && !esSlick) {
+        return {
+          tipo: 'box',
+          titulo: 'BOX AHORA · Neumático liso',
+          detalle: 'La pista está seca y llevas ' + compActual.nombre + '. Monta un compuesto liso para recuperar el ritmo y evitar la degradación del neumático de lluvia.',
+          score: 93
+        };
+      }
+
+      if (estado.startPos === 1) {
+        return {
+          tipo: 'hold',
+          titulo: 'Liderar y Gestionar',
+          detalle: 'Vas primero: no hay coche delante al que atacar. Gestiona la goma y protege la posición ante el coche de detrás.',
+          score: 78
+        };
+      }
+
+      const degradacionAlta = compActual.degFactor >= 1.5 && estado.tireAge >= 10;
+      const drsDelante = estado.ahead.drs || gapDelante <= 1.0;
+
+      if (gapDelante <= 1.8 && (degradacionAlta || drsDelante)) {
+        const score = limitar(80 + ((1.8 - gapDelante) * 7) + (estado.tireAge >= 10 ? 8 : 0), 58, 96);
+        return {
+          tipo: 'undercut',
+          titulo: 'Lanzar Undercut Ahora',
+          detalle: 'Coche delante a ' + gapDelante.toFixed(1) + ' s. Tu goma acumula ' + estado.tireAge + ' vueltas: entra al final de esta vuelta para ganar la posición con goma fresca.',
+          score: Math.round(score)
+        };
+      }
+
+      const presionTrasera = estado.behind.drs && gapDetras <= 1;
+      if (presionTrasera && ['soft', 'medium'].indexOf(estado.behind.compound) !== -1 && estado.tireAge >= 8) {
+        return {
+          tipo: 'cover',
+          titulo: 'Cobertura defensiva con parada',
+          detalle: 'El coche de detrás viene a ' + gapDetras.toFixed(1) + ' s con ' + COMPOUNDS[estado.behind.compound].nombre + '. Cubre el undercut entrando antes de que se meta en tu ventana.',
+          score: 82
+        };
+      }
+
+      if (gapDelante > 2.5 && estado.tireAge < 12) {
+        return {
+          tipo: 'overcut',
+          titulo: 'Mantener Overcut',
+          detalle: 'Tienes ' + gapDelante.toFixed(1) + ' s de margen sobre el coche de delante. Alarga el stint y aprovecha el aire limpio antes de parar.',
+          score: 76
+        };
+      }
+
+      return {
+        tipo: 'seguir',
+        titulo: 'Seguir Traza',
+        detalle: 'Sin amenaza inmediata ni hueco claro de undercut. Mantén el ritmo y protege la goma hasta la ventana óptima.',
+        score: 70
+      };
+    }
+
+    function calcularProtocoloSC() {
+      if (estado.trackStatus === 'red') {
+        return {
+          tipo: 'red',
+          titulo: 'Bandera roja · Cambio gratuito',
+          detalle: 'Aprovecha la bandera roja para montar neumático nuevo sin coste. Reajusta el plan al reinicio.',
+          score: 95
+        };
+      }
+
+      const enSC = estado.trackStatus === 'sc' || estado.trackStatus === 'vsc';
+      if (!enSC) {
+        return {
+          tipo: 'neutral',
+          titulo: 'Sin neutralización · Mantener plan',
+          detalle: 'No hay coche de seguridad activo. La parada cuesta ' + perdidaPitActual().toFixed(1) + ' s; respeta la ventana calculada.',
+          score: 45
+        };
+      }
+
+      const compuestoAdecuado = estado.weather === 'dry'
+        ? esCompuestoSeco(estado.compound)
+        : compuestosPermitidos(estado.weather).indexOf(estado.compound) !== -1;
+      const gomaSuficiente = estado.tireAge < 10 && compuestoAdecuado;
+      if (gomaSuficiente) {
+        return {
+          tipo: 'hold',
+          titulo: 'Mantener Pista',
+          detalle: 'La neutralización reduce la pérdida a 12 s, pero tu goma aún tiene vida. Guarda la parada para más adelante.',
+          score: 58
+        };
+      }
+
+      const restoV = estado.totalLaps - estado.currentLap;
+      if (restoV <= 2) {
+        return {
+          tipo: 'hold',
+          titulo: 'Mantener Pista',
+          detalle: 'Faltan pocas vueltas; conviene conservar la goma actual.',
+          score: 70
+        };
+      }
+
+      return {
+        tipo: 'box',
+        titulo: 'BOX AHORA · Parada con 12 s de pérdida',
+        detalle: 'Bajo ' + (estado.trackStatus === 'sc' ? 'coche de seguridad' : 'coche de seguridad virtual') + ' la pérdida baja a 12 s. Con ' + estado.tireAge + ' vueltas de goma, compensa parar ya.',
+        score: 93
+      };
+    }
+
+    function calcularCruceClima() {
+      const esSlick = esCompuestoSeco(estado.compound);
+
+      if (estado.weather === 'dry') {
+        if (!esSlick) {
+          return {
+            tipo: 'dry',
+            titulo: 'Volver a neumáticos lisos',
+            detalle: 'La pista está seca: los lisos son más rápidos que intermedios o lluvia. Planifica el cambio en cuanto la trazada esté limpia.',
+            score: 86
+          };
+        }
+        return {
+          tipo: 'neutral',
+          titulo: 'Ventana seca estable',
+          detalle: 'Sin lluvia inminente. La degradación marca la parada; vigila el cielo por si cambia la transición.',
+          score: 62
+        };
+      }
+
+      const ideal = estado.weather === 'heavyRain' ? 'wet' : 'intermediate';
+      if (esSlick) {
+        return {
+          tipo: 'box',
+          titulo: 'Montar ' + COMPOUNDS[ideal].nombre,
+          detalle: 'La transición ya favorece ' + COMPOUNDS[ideal].nombre.toLowerCase() + '. Los neumáticos lisos pierden ~' + (estado.weather === 'heavyRain' ? 24 : 11) + ' s por vuelta.',
+          score: 92
+        };
+      }
+      if (estado.compound !== ideal) {
+        return {
+          tipo: 'rain',
+          titulo: 'Cambiar a ' + COMPOUNDS[ideal].nombre,
+          detalle: 'La intensidad actual pide ' + COMPOUNDS[ideal].nombre.toLowerCase() + ' para maximizar el agarre y el tiempo por vuelta.',
+          score: 84
+        };
+      }
+      return {
+        tipo: 'rain',
+        titulo: 'Mantener ' + COMPOUNDS[ideal].nombre,
+        detalle: 'Compuesto correcto para la intensidad de lluvia actual. Vigila la transición si la pista evoluciona.',
+        score: 80
+      };
+    }
+
+    // Probabilidad ponderada: diferencia de tiempo, degradación acumulada,
+    // posición recuperable en pista y riesgo de tráfico.
+    function puntuarPlan(plan, mejorTiempo) {
+      const delta = plan.tiempo - mejorTiempo;
+      let score = 94 - (delta * 2.2);
+      score -= Math.max(0, estado.startPos - 5) * 0.45;
+      if (estado.startPos > 10) score -= 3;
+      if (estado.startPos > 15) score -= 3;
+      const estresGoma = Math.min(estado.tireAge, 30) * 0.12;
+      if (plan.paradas === 0) score -= estresGoma * 0.9;
+      else if (plan.paradas === 1) score -= estresGoma * 0.5;
+      else score += estresGoma * 0.25;
+      const trafico = Math.min(5, Math.max(0, estado.startPos - 8) * 0.4);
+      score -= trafico;
+      return Math.round(limitar(score, 25, 96));
+    }
+
+    /* ============================================================
+       6. VALIDACIÓN DE ENTRADAS
+       ============================================================ */
+
+    function validarEstado() {
+      const errores = [];
+      const total = estado.totalLaps;
+      const vuelta = estado.currentLap;
+
+      if (!Number.isInteger(total) || total < 1 || total > 100) {
+        errores.push('Las vueltas totales deben ser un entero entre 1 y 100.');
+      }
+      if (!Number.isInteger(vuelta) || vuelta < 1) {
+        errores.push('La vuelta actual debe ser un entero mayor o igual a 1.');
+      } else if (Number.isInteger(total) && vuelta > total) {
+        errores.push('La vuelta actual (' + vuelta + ') no puede superar las vueltas totales (' + total + ').');
+      }
+      if (!Number.isInteger(estado.startPos) || estado.startPos < 1 || estado.startPos > 20) {
+        errores.push('La posición en pista debe ser un entero entre 1 y 20.');
+      }
+      if (!Number.isInteger(estado.tireAge) || estado.tireAge < 0 || estado.tireAge > 80) {
+        errores.push('Las vueltas del neumático deben ser un entero entre 0 y 80.');
+      } else if (Number.isInteger(vuelta) && vuelta >= 1 && estado.tireAge > vuelta) {
+        errores.push('Las vueltas del neumático no pueden superar la vuelta actual (' + vuelta + ').');
+      }
+      if (!CIRCUITOS[estado.circuitKey]) {
+        errores.push('Selecciona un circuito válido.');
+      }
+      if (!WEATHER[estado.weather]) {
+        errores.push('Selecciona un estado del clima válido.');
+      }
+      if (!STATUS[estado.trackStatus]) {
+        errores.push('Selecciona un estado de pista válido.');
+      }
+      if (!COMPOUNDS[estado.compound]) {
+        errores.push('Selecciona un compuesto actual válido.');
+      }
+      if (!COMPOUNDS[estado.ahead.compound]) {
+        errores.push('Selecciona un compuesto válido para el coche de delante.');
+      }
+      if (!COMPOUNDS[estado.behind.compound]) {
+        errores.push('Selecciona un compuesto válido para el coche de detrás.');
+      }
+      if (!Number.isFinite(estado.ahead.delta) || estado.ahead.delta < 0 || estado.ahead.delta > GAP_MAXIMO) {
+        errores.push('El delta del coche de delante debe ser un número entre 0 y 10 s.');
+      }
+      if (!Number.isFinite(estado.behind.delta) || estado.behind.delta < 0 || estado.behind.delta > GAP_MAXIMO) {
+        errores.push('El delta del coche de detrás debe ser un número entre 0 y 10 s.');
+      }
+      return errores;
+    }
+
+    /* ============================================================
+       7. RENDERIZADO REACTIVO DEL DOM
+       ============================================================ */
+
+    function numSeguro(n, decimales) {
+      return Number.isFinite(n) ? n.toFixed(decimales) : '—';
+    }
+
+    function render() {
+      const errores = validarEstado();
+      actualizarCabecera();
+      actualizarMetricasCircuito();
+      actualizarHints();
+      actualizarBotones();
+
+      const banner = $('validationBanner');
+      const resultados = $('resultsArea');
+
+      if (estado.finalizada) {
+        banner.classList.add('hidden');
+        banner.innerHTML = '';
+        resultados.classList.remove('bloqueado');
+        renderFinalizado();
+        return;
+      }
+
+      if (errores.length) {
+        banner.innerHTML = '<strong>Revisa la telemetría:</strong><ul>' + errores.map(function (e) { return '<li>' + e + '</li>'; }).join('') + '</ul>';
+        banner.classList.remove('hidden');
+        resultados.classList.add('bloqueado');
+        limpiarResultados();
+        return;
+      }
+
+      banner.classList.add('hidden');
+      banner.innerHTML = '';
+      resultados.classList.remove('bloqueado');
+      renderResultados(calcularResultados());
+    }
+
+    function actualizarCabecera() {
+      const circ = circuitoActual();
+      const clima = WEATHER[estado.weather] || WEATHER.dry;
+      const status = STATUS[estado.trackStatus] || STATUS.green;
+
+      $('circuitNameTop').textContent = circ ? circ.nombre : '—';
+      $('chipWeather').textContent = clima.nombre;
+      $('chipWeather').className = 'chip weather ' + estado.weather;
+      $('chipTrack').textContent = status.label;
+      $('chipTrack').className = 'chip track ' + status.clase;
+      $('chipLap').textContent = 'V ' + (Number.isFinite(estado.currentLap) ? estado.currentLap : '—') + ' / ' + (Number.isFinite(estado.totalLaps) ? estado.totalLaps : '—');
+
+      $('posOut').textContent = Number.isFinite(estado.startPos) ? estado.startPos : '—';
+      $('lapOut').textContent = Number.isFinite(estado.currentLap) ? estado.currentLap : '—';
+      $('tireAgeOut').textContent = Number.isFinite(estado.tireAge) ? estado.tireAge : '—';
+      $('aheadGapOut').textContent = numSeguro(estado.ahead.delta, 1);
+      $('behindGapOut').textContent = numSeguro(estado.behind.delta, 1);
+      $('aheadGapLabel').textContent = numSeguro(estado.ahead.delta, 1) + ' s';
+      $('behindGapLabel').textContent = numSeguro(estado.behind.delta, 1) + ' s';
+
+      const total = Number.isFinite(estado.totalLaps) && estado.totalLaps > 0 ? estado.totalLaps : 0;
+      const completadas = total ? (estado.finalizada ? total : Math.floor(limitar((Number.isFinite(estado.currentLap) ? estado.currentLap : 1) - 1, 0, total))) : 0;
+      const pct = total ? limitar((completadas / total) * 100, 0, 100) : 0;
+      $('lapProgress').style.width = pct + '%';
+      $('progressText').textContent = completadas + ' / ' + (total || '—') + ' vueltas completadas';
+      $('progressPct').textContent = Math.round(pct) + '%';
+    }
+
+    function actualizarMetricasCircuito() {
+      const circ = circuitoActual();
+      if (!circ) {
+        $('circuitPitLoss').textContent = '—';
+        $('circuitAbrasion').textContent = '—';
+        $('circuitBase').textContent = '—';
+        $('circuitLaps').textContent = '—';
+        return;
+      }
+      $('circuitPitLoss').textContent = circ.pitLoss.toFixed(1) + ' s';
+      $('circuitAbrasion').textContent = circ.abrasionLabel;
+      $('circuitBase').textContent = formatearVuelta(circ.baseLapTime);
+      $('circuitLaps').textContent = Number.isFinite(estado.totalLaps) ? estado.totalLaps : '—';
+    }
+
+    function actualizarHints() {
+      const circ = circuitoActual();
+      const el = $('compoundHint');
+      if (!circ || !COMPOUNDS[estado.compound]) {
+        el.textContent = 'Selecciona un circuito y un compuesto válidos.';
+        el.className = 'hint warn';
+        return;
+      }
+      const esSlick = esCompuestoSeco(estado.compound);
+      let texto = '';
+      let clase = '';
+
+      if (estado.weather === 'dry') {
+        const recomendado = circ.abrasion >= 0.05 ? 'Medio o Duro' : 'Blando o Medio';
+        if (!esSlick) {
+          texto = '⚠ Estás con neumático de lluvia en pista seca. Los neumáticos lisos son más rápidos.';
+          clase = 'warn';
+        } else {
+          texto = 'Mezcla recomendada en seco para ' + circ.nombre + ': ' + recomendado + '.';
+        }
+      } else {
+        const ideal = estado.weather === 'heavyRain' ? 'lluvia extrema' : 'intermedios';
+        if (esSlick) {
+          texto = '⚠ Neumáticos lisos en pista mojada: box inmediato para montar ' + ideal + '.';
+          clase = 'warn';
+        } else {
+          texto = 'Clima húmedo: prioriza ' + ideal + '. La estrategia solo propondrá intermedios o lluvia.';
+        }
+      }
+      el.textContent = texto;
+      el.className = 'hint ' + clase;
+    }
+
+    function actualizarBotones() {
+      const sim = $('simulateLap');
+      const fin = estado.finalizada || !Number.isFinite(estado.currentLap) || !Number.isFinite(estado.totalLaps) || estado.currentLap > estado.totalLaps;
+      sim.disabled = fin;
+      const texto = estado.finalizada
+        ? 'Carrera finalizada'
+        : estado.currentLap === estado.totalLaps ? 'Simular última vuelta' : 'Simular siguiente vuelta';
+      sim.innerHTML = icono('play') + ' ' + texto;
+
+      const btn = $('deploySc');
+      if (estado.trackStatus === 'sc') btn.innerHTML = icono('shield') + ' Desplegar VSC';
+      else if (estado.trackStatus === 'vsc') btn.innerHTML = icono('flag') + ' Volver a bandera verde';
+      else btn.innerHTML = icono('flag') + ' Desplegar SC';
+    }
+
+    function limpiarResultados() {
+      $('planTitle').textContent = '—';
+      $('planDetail').textContent = 'Corrige los datos resaltados para calcular la estrategia.';
+      $('planTime').textContent = '—';
+      $('planDelta').textContent = '—';
+      $('confidencePill').textContent = '—';
+      $('confidencePill').className = 'pill confianza bajo';
+      $('comparativa').innerHTML = '<div class="compare-item disabled"><span>Sin paradas</span><strong>—</strong><small>—</small></div><div class="compare-item disabled"><span>1 parada</span><strong>—</strong><small>—</small></div><div class="compare-item disabled"><span>2 paradas</span><strong>—</strong><small>—</small></div>';
+      $('stintMap').innerHTML = '<span class="empty">Sin datos válidos.</span>';
+      $('stintMap').setAttribute('aria-label', 'Plan de relevos sin datos válidos.');
+      $('pitWindow').textContent = '—';
+      $('pitWindowDetail').textContent = 'Introduce una vuelta actual válida para calcular la ventana.';
+      actualizarBadge('actionBadge', 'actionDetail', 'neutral', 'alert', 'Sin evaluación', 'Corrige la telemetría para recibir una acción.');
+      actualizarBadge('scBadge', 'scDetail', 'neutral', 'alert', 'Sin evaluación', 'Corrige la telemetría para evaluar el protocolo.');
+      actualizarBadge('weatherBadge', 'weatherDetail', 'neutral', 'alert', 'Sin evaluación', 'Corrige la telemetría para evaluar la transición de clima.');
+      $('probabilityMatrix').innerHTML = '<span class="empty">Sin datos válidos.</span>';
+    }
+
+    function actualizarBadge(idBadge, idDetalle, tipo, iconoNombre, titulo, detalle) {
+      const badge = $(idBadge);
+      badge.className = 'action-badge ' + tipo;
+      badge.innerHTML = icono(iconoNombre) + '<span>' + titulo + '</span>';
+      $(idDetalle).textContent = detalle;
+    }
+
+    function renderFinalizado() {
+      const circ = circuitoActual();
+      const total = Number.isFinite(estado.totalLaps) ? estado.totalLaps : '—';
+      $('planTitle').textContent = 'Carrera finalizada';
+      $('planDetail').textContent = 'Has completado ' + total + ' vueltas en ' + (circ ? circ.nombre : 'el circuito') + '. Reinicia el simulador para calcular otra estrategia.';
+      $('planTime').textContent = '—';
+      $('planDelta').textContent = '—';
+      $('confidencePill').textContent = '—';
+      $('confidencePill').className = 'pill confianza bajo';
+      $('comparativa').innerHTML =
+        '<div class="compare-item disabled"><span>Circuito</span><strong>' + (circ ? circ.nombre : '—') + '</strong><small>—</small></div>' +
+        '<div class="compare-item disabled"><span>Vueltas</span><strong>' + total + '</strong><small>Completadas</small></div>' +
+        '<div class="compare-item disabled"><span>Estado</span><strong>Final</strong><small>Reinicia para simular</small></div>';
+      $('stintMap').innerHTML = '<span class="empty">Carrera completada.</span>';
+      $('stintMap').setAttribute('aria-label', 'Carrera completada.');
+      $('pitWindow').textContent = 'Carrera finalizada';
+      $('pitWindowDetail').textContent = 'No quedan vueltas por simular.';
+      actualizarBadge('actionBadge', 'actionDetail', 'neutral', 'flag', 'Sin acciones pendientes', 'La carrera ha terminado; reinicia para empezar de nuevo.');
+      actualizarBadge('scBadge', 'scDetail', 'neutral', 'flag', 'Sin neutralizaciones pendientes', 'No quedan vueltas por simular.');
+      actualizarBadge('weatherBadge', 'weatherDetail', 'neutral', 'cloud', 'Sin cambios de clima pendientes', 'La carrera ha terminado.');
+      $('probabilityMatrix').innerHTML = '<span class="empty">Carrera finalizada. Reinicia el simulador para calcular otra estrategia.</span>';
+    }
+
+    function renderResultados(r) {
+      renderHero(r);
+      renderComparativa(r.plan0, r.plan1, r.plan2, r.mejor);
+      renderStintMap(r.mejor);
+      renderVentana(r.mejor, r.ventana);
+      const iconoAccion = {
+        undercut: 'zap', cover: 'shield', overcut: 'gauge', seguir: 'activity',
+        box: 'wrench', hold: 'shield', rain: 'cloud', red: 'alert', neutral: 'activity', dry: 'cloud'
+      };
+      actualizarBadge('actionBadge', 'actionDetail', r.accion.tipo, iconoAccion[r.accion.tipo] || 'activity', r.accion.titulo, r.accion.detalle);
+      actualizarBadge('scBadge', 'scDetail', r.protocolo.tipo, iconoAccion[r.protocolo.tipo] || 'shield', r.protocolo.titulo, r.protocolo.detalle);
+      actualizarBadge('weatherBadge', 'weatherDetail', r.clima.tipo, iconoAccion[r.clima.tipo] || 'cloud', r.clima.titulo, r.clima.detalle);
+      renderMatriz(r);
+    }
+
+    function renderHero(r) {
+      const mejor = r.mejor;
+
+      if (!mejor) {
+        $('planTitle').textContent = 'Sin estrategia viable';
+        $('planDetail').textContent = 'No hay un plan válido con los datos actuales. Revisa la telemetría o reinicia el simulador.';
+        $('planTime').textContent = '—';
+        $('planDelta').textContent = '—';
+        $('confidencePill').textContent = '—';
+        $('confidencePill').className = 'pill confianza bajo';
+        return;
+      }
+
+      $('planTitle').textContent = nombrePlan(mejor);
+      $('planDetail').textContent = describirPlan(mejor);
+      $('planTime').textContent = formatearTiempo(mejor.tiempo);
+
+      if (r.alterno) {
+        const diff = Math.abs(mejor.tiempo - r.alterno.tiempo);
+        const alterno = r.alterno.paradas === 0
+          ? 'el plan sin paradas'
+          : r.alterno.paradas + ' parada' + (r.alterno.paradas > 1 ? 's' : '');
+        $('planDelta').textContent = diff.toFixed(1) + ' s más rápido que ' + alterno;
+      } else {
+        $('planDelta').textContent = 'Alternativa no viable';
+      }
+
+      const score = mejor === r.plan0 ? r.p0score : mejor === r.plan1 ? r.p1score : r.p2score;
+      $('confidencePill').textContent = score + '%';
+      $('confidencePill').className = 'pill confianza ' + claseScore(score);
+    }
+
+    function describirPlan(plan) {
+      const restantes = estado.totalLaps - estado.currentLap + 1;
+      if (plan.paradas === 0) {
+        return 'Sin paradas · conserva el compuesto ' + COMPOUNDS[estado.compound].nombre + ' durante ' + restantes + ' vueltas · no hay coste de boxes.';
+      }
+      const paradas = plan.stops.map(function (s) {
+        return 'Box V' + s.lap + ' → ' + COMPOUNDS[s.compound].nombre;
+      }).join(' · ');
+      const ahora = plan.stops[0].lap === estado.currentLap ? ' · ¡AHORA!' : '';
+      const perdida = Number.isFinite(plan.costeParadas) ? plan.costeParadas : perdidaPitActual();
+      return paradas + ahora + ' · ' + restantes + ' vueltas restantes · pérdida en boxes ' + perdida.toFixed(1) + ' s.';
+    }
+
+    function renderComparativa(plan0, plan1, plan2, mejor) {
+      function item(plan, etiqueta) {
+        if (!plan) {
+          return '<div class="compare-item disabled"><span>' + etiqueta + '</span><strong>No viable</strong><small>—</small></div>';
+        }
+        const activo = plan === mejor ? ' best' : '';
+        const paradas = plan.paradas === 0
+          ? 'Conservar ' + COMPOUNDS[estado.compound].nombre
+          : plan.stops.map(function (s) { return 'V' + s.lap + ' ' + COMPOUNDS[s.compound].short; }).join(' · ');
+        return '<div class="compare-item' + activo + '"><span>' + etiqueta + '</span><strong>' + formatearTiempo(plan.tiempo) + '</strong><small>' + paradas + '</small></div>';
+      }
+      $('comparativa').innerHTML = item(plan0, 'Sin paradas') + item(plan1, '1 parada') + item(plan2, '2 paradas');
+    }
+
+    function renderStintMap(plan) {
+      const cont = $('stintMap');
+      if (!plan) {
+        cont.innerHTML = '<span class="empty">Sin plan de relevos.</span>';
+        cont.setAttribute('aria-label', 'Sin plan de relevos.');
+        return;
+      }
+
+      const segmentos = [];
+      let cursor = estado.currentLap;
+      let compuesto = estado.compound;
+
+      for (let i = 0; i < plan.stops.length; i++) {
+        const stop = plan.stops[i];
+        segmentos.push({ compuesto: compuesto, desde: cursor, hasta: stop.lap, largo: stop.lap - cursor + 1 });
+        compuesto = stop.compound;
+        cursor = stop.lap + 1;
+      }
+      segmentos.push({ compuesto: compuesto, desde: cursor, hasta: estado.totalLaps, largo: estado.totalLaps - cursor + 1 });
+
+      const visibles = segmentos.filter(function (s) { return s.largo > 0; });
+      const resumen = visibles.map(function (s) {
+        return COMPOUNDS[s.compuesto].nombre + ' de la vuelta ' + s.desde + ' a la ' + s.hasta + ', ' + s.largo + ' vueltas';
+      }).join('; ');
+      cont.setAttribute('aria-label', 'Plan de relevos: ' + resumen + '.');
+
+      cont.innerHTML = visibles.map(function (s) {
+        const color = COMPOUNDS[s.compuesto].color;
+        return '<div class="stint" style="flex:' + s.largo + ';--stint-color:' + color + ';--stint-bg:' + color + '22" title="' + COMPOUNDS[s.compuesto].nombre + ': vueltas ' + s.desde + '-' + s.hasta + '"><span>' + COMPOUNDS[s.compuesto].short + '</span><small>' + s.largo + 'v</small></div>';
+      }).join('');
+    }
+
+    function renderVentana(mejor, ventana) {
+      if (!mejor) {
+        $('pitWindow').textContent = '—';
+        $('pitWindowDetail').textContent = 'Sin vueltas restantes para planificar una parada.';
+        return;
+      }
+
+      if (mejor.paradas === 0) {
+        const restantes = estado.totalLaps - estado.currentLap + 1;
+        $('pitWindow').textContent = 'Sin parada prevista';
+        $('pitWindowDetail').textContent = 'El plan óptimo conserva el compuesto ' + COMPOUNDS[estado.compound].nombre + ' durante ' + restantes + ' vueltas; una parada no compensa el tiempo perdido.';
+        return;
+      }
+
+      if (!ventana) {
+        $('pitWindow').textContent = 'V' + mejor.primerPit;
+        $('pitWindowDetail').textContent = 'Parada óptima en la vuelta ' + mejor.primerPit + ' · objetivo: ' + mejor.stops.map(function (s) { return COMPOUNDS[s.compound].nombre; }).join(' → ') + '.';
+        return;
+      }
+
+      const ahora = mejor.stops[0].lap === estado.currentLap;
+      $('pitWindow').textContent = ahora ? ('AHORA · V' + estado.currentLap) : ('V' + ventana.min + ' – V' + ventana.max);
+
+      const objetivo = mejor.stops.map(function (s) { return COMPOUNDS[s.compound].nombre; }).join(' → ');
+      const segunda = mejor.paradas === 2 ? ' · 2ª parada óptima: V' + mejor.stops[1].lap : '';
+      const perdida = Number.isFinite(mejor.costeParadas) ? mejor.costeParadas : perdidaPitActual();
+      $('pitWindowDetail').textContent = 'Parada óptima: V' + mejor.stops[0].lap + segunda + ' · objetivo: ' + objetivo + ' · pérdida en boxes ' + perdida.toFixed(1) + ' s.';
+    }
+
+    function renderMatriz(r) {
+      const filas = [
+        { label: 'Plan sin paradas', score: r.p0score, sub: r.plan0 ? formatearTiempo(r.plan0.tiempo) : 'No viable' },
+        { label: 'Plan 1 parada', score: r.p1score, sub: r.plan1 ? formatearTiempo(r.plan1.tiempo) : 'No viable' },
+        { label: 'Plan 2 paradas', score: r.p2score, sub: r.plan2 ? formatearTiempo(r.plan2.tiempo) : 'No viable' },
+        { label: 'Ataque (undercut)', score: r.accion.score, sub: r.accion.titulo },
+        { label: 'Protocolo SC / VSC', score: r.protocolo.score, sub: r.protocolo.titulo },
+        { label: 'Cruce de clima', score: r.clima.score, sub: r.clima.titulo }
+      ];
+
+      $('probabilityMatrix').innerHTML = filas.map(function (f) {
+        const score = Number.isFinite(f.score) ? f.score : null;
+        const clase = score === null ? 'muted' : claseScore(score);
+        const ancho = score === null ? 0 : score;
+        return '<div class="prob-row">' +
+          '<div class="prob-head"><span>' + f.label + '<small>' + f.sub + '</small></span><strong class="' + clase + '">' + (score === null ? 'N/A' : score + '%') + '</strong></div>' +
+          '<div class="bar"><div class="bar-fill ' + clase + '" style="width:' + ancho + '%"></div></div>' +
+          '</div>';
+      }).join('');
+    }
+
+    /* ============================================================
+       8. SINCRONIZACIÓN DE CONTROLES Y EVENTOS
+       ============================================================ */
+
+    // Agrupa los renderizados en el siguiente fotograma para que los deslizadores sean fluidos.
+    function programarRender() {
+      if (renderTimer) cancelAnimationFrame(renderTimer);
+      renderTimer = requestAnimationFrame(function () {
+        renderTimer = null;
+        render();
+      });
+    }
+
+    function marcarGrupo(id, valor) {
+      const botones = document.querySelectorAll('#' + id + ' [data-value]');
+      for (let i = 0; i < botones.length; i++) {
+        const activo = botones[i].getAttribute('data-value') === valor;
+        botones[i].classList.toggle('active', activo);
+        botones[i].setAttribute('aria-pressed', String(activo));
+      }
+    }
+
+    function enlazarPar(idRango, idNumero, aplicar) {
+      const rango = $(idRango);
+      const numero = $(idNumero);
+
+      function actualizar(valor, origen) {
+        const n = valor === '' ? NaN : Number(valor);
+        aplicar(n);
+        if (Number.isFinite(n)) {
+          if (origen !== 'rango') rango.value = n;
+          if (origen !== 'numero') numero.value = n;
+        }
+        programarRender();
+      }
+
+      rango.addEventListener('input', function () { actualizar(rango.value, 'rango'); });
+      numero.addEventListener('input', function () { actualizar(numero.value, 'numero'); });
+    }
+
+    function enlazarGap(idRango, idNumero, aplicar) {
+      const rango = $(idRango);
+      const numero = $(idNumero);
+
+      function actualizar(valor, origen) {
+        const n = valor === '' ? NaN : Number(valor);
+        aplicar(n);
+        if (Number.isFinite(n)) {
+          if (origen !== 'rango') rango.value = n;
+          if (origen !== 'numero') numero.value = n;
+        }
+        programarRender();
+      }
+
+      rango.addEventListener('input', function () { actualizar(rango.value, 'rango'); });
+      numero.addEventListener('input', function () { actualizar(numero.value, 'numero'); });
+    }
+
+    function enlazarSegmentado(id, aplicar) {
+      const botones = document.querySelectorAll('#' + id + ' [data-value]');
+      for (let i = 0; i < botones.length; i++) {
+        botones[i].addEventListener('click', function () {
+          const valor = this.getAttribute('data-value');
+          aplicar(valor);
+          marcarGrupo(id, valor);
+          render();
+        });
+      }
+    }
+
+    function sincronizarControles() {
+      $('circuitSelect').value = estado.circuitKey;
+
+      $('startPos').value = estado.startPos;
+      $('startPosRange').value = estado.startPos;
+
+      $('currentLap').max = estado.totalLaps;
+      $('currentLapRange').max = estado.totalLaps;
+      $('currentLap').value = estado.currentLap;
+      $('currentLapRange').value = estado.currentLap;
+
+      $('totalLaps').value = estado.totalLaps;
+
+      $('tireAgeRange').max = 80;
+      $('tireAge').value = estado.tireAge;
+      $('tireAgeRange').value = estado.tireAge;
+
+      $('aheadCompound').value = estado.ahead.compound;
+      $('aheadDelta').value = estado.ahead.delta;
+      $('aheadGapRange').value = estado.ahead.delta;
+      $('aheadDrs').checked = estado.ahead.drs;
+
+      $('behindCompound').value = estado.behind.compound;
+      $('behindDelta').value = estado.behind.delta;
+      $('behindGapRange').value = estado.behind.delta;
+      $('behindDrs').checked = estado.behind.drs;
+
+      marcarGrupo('weatherGroup', estado.weather);
+      marcarGrupo('statusGroup', estado.trackStatus);
+      marcarGrupo('compoundGroup', estado.compound);
+    }
+
+    function simularSiguienteVuelta() {
+      if (estado.finalizada) return;
+      if (validarEstado().length) { render(); return; }
+      if (estado.currentLap > estado.totalLaps) { render(); return; }
+
+      const eraUltimaVuelta = estado.currentLap >= estado.totalLaps;
+      estado.tireAge += 1;
+
+      if (eraUltimaVuelta) {
+        estado.finalizada = true;
+      } else {
+        estado.currentLap += 1;
+
+        // Variación leve para que la simulación de distancias no sea completamente estática.
+        const jitter = function () { return (Math.random() - 0.5) * 0.2; };
+        estado.ahead.delta = limitar(redondear1(estado.ahead.delta + jitter()), 0.1, GAP_MAXIMO);
+        estado.behind.delta = limitar(redondear1(estado.behind.delta + jitter()), 0.1, GAP_MAXIMO);
+      }
+
+      sincronizarControles();
+      render();
+    }
+
+    function desplegarSC() {
+      if (estado.finalizada) return;
+      if (estado.trackStatus === 'green' || estado.trackStatus === 'red') estado.trackStatus = 'sc';
+      else if (estado.trackStatus === 'sc') estado.trackStatus = 'vsc';
+      else estado.trackStatus = 'green';
+      sincronizarControles();
+      render();
+    }
+
+    function reiniciar() {
+      estado = clonar(ESTADO_INICIAL);
+      sincronizarControles();
+      render();
+    }
+
+    function enlazarEventos() {
+      $('circuitSelect').addEventListener('change', function () {
+        estado.circuitKey = this.value;
+        const circ = circuitoActual();
+        estado.totalLaps = circ.totalLaps;
+        if (estado.currentLap > estado.totalLaps) estado.currentLap = estado.totalLaps;
+        sincronizarControles();
+        render();
+      });
+
+      enlazarPar('startPosRange', 'startPos', function (n) { estado.startPos = n; });
+      enlazarPar('currentLapRange', 'currentLap', function (n) { estado.currentLap = n; });
+      enlazarPar('tireAgeRange', 'tireAge', function (n) { estado.tireAge = n; });
+
+      $('totalLaps').addEventListener('input', function () {
+        estado.totalLaps = this.value === '' ? NaN : Number(this.value);
+        if (Number.isFinite(estado.totalLaps)) {
+          $('currentLapRange').max = estado.totalLaps;
+          $('currentLap').max = estado.totalLaps;
+        }
+        programarRender();
+      });
+
+      enlazarSegmentado('weatherGroup', function (v) { estado.weather = v; });
+      enlazarSegmentado('statusGroup', function (v) { estado.trackStatus = v; });
+      enlazarSegmentado('compoundGroup', function (v) { estado.compound = v; });
+
+      $('aheadCompound').addEventListener('change', function () { estado.ahead.compound = this.value; render(); });
+      $('behindCompound').addEventListener('change', function () { estado.behind.compound = this.value; render(); });
+      $('aheadDrs').addEventListener('change', function () { estado.ahead.drs = this.checked; render(); });
+      $('behindDrs').addEventListener('change', function () { estado.behind.drs = this.checked; render(); });
+
+      enlazarGap('aheadGapRange', 'aheadDelta', function (n) { estado.ahead.delta = n; });
+      enlazarGap('behindGapRange', 'behindDelta', function (n) { estado.behind.delta = n; });
+
+      $('simulateLap').addEventListener('click', simularSiguienteVuelta);
+      $('deploySc').addEventListener('click', desplegarSC);
+      $('resetBtn').addEventListener('click', reiniciar);
+    }
+
+    /* ============================================================
+       9. ARRANQUE
+       ============================================================ */
+
+    function inicializar() {
+      const iconos = document.querySelectorAll('[data-icon]');
+      for (let i = 0; i < iconos.length; i++) {
+        iconos[i].innerHTML = icono(iconos[i].getAttribute('data-icon'));
+      }
+
+      const opcionesCircuito = Object.keys(CIRCUITOS).map(function (key) {
+        return '<option value="' + key + '">' + CIRCUITOS[key].nombre + '</option>';
+      }).join('');
+      $('circuitSelect').innerHTML = opcionesCircuito;
+
+      const opcionesCompuesto = Object.keys(COMPOUNDS).map(function (key) {
+        return '<option value="' + key + '">' + COMPOUNDS[key].nombre + '</option>';
+      }).join('');
+      $('aheadCompound').innerHTML = opcionesCompuesto;
+      $('behindCompound').innerHTML = opcionesCompuesto;
+
+      enlazarEventos();
+      sincronizarControles();
+      render();
+    }
+
+    inicializar();
+  </script>
+</body>
+</html>
